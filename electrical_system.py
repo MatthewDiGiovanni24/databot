@@ -56,4 +56,4 @@ def send_electrical_report(df, client, channel):
             filename="ecu_battery_voltage.png",
             title="ECU Battery Voltage vs Time",
         )
-    print("Electrical system report uploaded to Slack.")
+    print("Electrical report uploaded to Slack.")
