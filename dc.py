@@ -1,65 +1,23 @@
 """DC telemetry reports."""
 
-from io import BytesIO
-
-import matplotlib.pyplot as plt
+from report_graphs import create_graph, send_graph, send_report_message
 
 
 def send_dc_report(df, client, channel):
-    """Send brake temperatures and a recorded clutch efficiency channel."""
+    """Send the dc summary and all available graphs."""
     graphs = [
-        ("brake_temperatures.png", "Brake Temperatures vs Time",
-         ["Brake Temperature Front", "Brake Temperature Rear"], False),
-        ("clutch_efficiency.png", "Clutch Efficiency vs Time",
-         ["Clutch Efficiency"], False),
+        ('brake_pressure_front.png', 'Brake Pressure Front vs Time',
+         ['Brake Pressure Front'], False),
+        ('brake_pressure_rear.png', 'Brake Pressure Rear vs Time',
+         ['Brake Pressure Rear'], False),
+        ('brake_temperature_front.png', 'Brake Temperature Front vs Time',
+         ['Brake Temperature Front'], False),
+        ('brake_temperature_rear.png', 'Brake Temperature Rear vs Time',
+         ['Brake Temperature Rear'], False),
     ]
-
-    if "Time" not in df:
-        raise ValueError("Reports require a Time channel.")
-    missing = []
-    available = []
+    columns = [column for _, _, channels, _ in graphs for column in channels]
+    send_report_message(df, client, channel, 'DC', columns)
     for filename, title, columns, step in graphs:
-        usable = []
-        for column in columns:
-            if column not in df or not df[["Time", column]].dropna().shape[0]:
-                missing.append(column)
-            else:
-                usable.append(column)
-        if usable:
-            available.append((filename, title, usable, step))
-
-    message = f"DC Report for {df.attrs.get('log_date', 'Unknown date')}"
-    if missing:
-        message += "\nMissing or empty data: " + ", ".join(missing)
-    client.chat_postMessage(channel=channel, text=message)
-
-    units = df.attrs.get("units", {})
-    for filename, title, columns, step in available:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        try:
-            for column in columns:
-                samples = df[["Time", column]].dropna()
-                label = column
-                unit = units.get(column, "").strip()
-                if unit:
-                    label += f" ({unit})"
-                if step:
-                    ax.step(samples["Time"], samples[column], where="post", label=label)
-                else:
-                    ax.plot(samples["Time"], samples[column], label=label)
-            ax.set_title(title)
-            ax.set_xlabel(f"Time ({units.get('Time', 's') or 's'})")
-            graph_units = {units.get(column, "").strip() for column in columns}
-            ax.set_ylabel(graph_units.pop() if len(graph_units) == 1 else "Value")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            fig.tight_layout()
-            with BytesIO() as image:
-                fig.savefig(image, format="png")
-                image.seek(0)
-                client.files_upload_v2(
-                    channel=channel, file=image, filename=filename, title=title
-                )
-        finally:
-            plt.close(fig)
-    print(f"DC report uploaded to Slack.")
+        image = create_graph(df, title, columns, step=step)
+        send_graph(image, client, channel, filename, title)
+    print("DC report uploaded to Slack.")
